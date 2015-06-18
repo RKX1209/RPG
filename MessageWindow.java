@@ -3,7 +3,7 @@ import java.util.*;
 
 /* メッセージボックス */
 public class MessageWindow extends Window{
-    private static final long Char_Interval = 100L;//文字を表示する間隔    
+    private static final long Char_Interval = 40L;//文字を表示する間隔    
 
     private String[] contents;//ボックスに表示する内容
 

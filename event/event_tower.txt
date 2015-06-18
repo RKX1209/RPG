@@ -1,0 +1,6 @@
+#イベントデータ(タワー)
+BATTLE,3,3,knight.png,5,0
+BATTLE,3,3,rockman.png,5,0
+BATTLE,18,8,boss.png,5,1
+SAVE,17,6,ぼうけんのしょにセーブした
+MOVE,12,29,world2

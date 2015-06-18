@@ -1,0 +1,7 @@
+#イベントデータ(ワールド)
+BATTLE,3,3,wizard.png,5,0
+BATTLE,3,3,ghost.png,5,0
+SAVE,32,37,ぼうけんのしょにセーブした
+MOVE,32,8,castle
+MOVE,3,10,castle2
+MOVE,29,39,world2

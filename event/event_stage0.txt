@@ -1,0 +1,14 @@
+#イベントデータ(スタージ1)
+TALK,king,9,8,よくきたなゆうしゃよウエイ-てかラインやってる？-どこすみ？
+TALK,peopleC,1,1,こんなところにきがつくとはさすがゆうしゃよ
+SAVE,2,2,ぼうけんのしょにセーブした
+SAVE,27,2,ぼうけんのしょにセーブした
+BATTLE,3,3,wizard.png,5,0
+BATTLE,3,3,ghost.png,5,0
+BATTLE,3,3,tartnack.png,5,0
+BATTLE,3,3,robo.png,5,0
+BATTLE,3,3,tiger.png,5,0
+BATTLE,3,3,knight.png,5,0
+BATTLE,3,3,rockman.png,5,0
+MOVE,32,21,stage2
+MOVE,11,1,stage2

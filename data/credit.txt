@@ -1,0 +1,2993 @@
+
+public class Animation{
+    private static Animation mInstance = new Animation();
+
+    private static final int Animation_Length_Limit = 999999;
+    
+    private int now_count;
+    
+    private Animation(){
+	now_count = 0;
+    }
+
+    public void Next(){
+	now_count++;
+	now_count %= Animation_Length_Limit;
+    }
+
+    
+    public int getNowCount(){
+	return now_count;
+    }
+
+    
+    public static Animation getInstance(){
+	return mInstance;
+    }
+
+}
+
+
+
+import java.awt.*;
+import java.util.*;
+import java.awt.event.*;
+import javax.swing.*;
+
+public class AnimationThread implements Runnable{
+    
+    public static final double APS = 3.0;//APS(Animation Per Second) 
+    public static final double Animation_Interval = 1.0 / APS * 1000;
+    
+    private Animation animation;
+
+    public AnimationThread(){
+	
+    }
+	    
+
+    public void run(){
+	while(true){
+	    Animation mInstance = animation.getInstance();
+	    mInstance.Next();
+	    try {
+		Thread.sleep((long)Animation_Interval);
+	    } catch (InterruptedException e) {
+		e.printStackTrace();
+	    }
+
+	}
+    }
+
+}
+
+
+
+import java.util.*;
+import java.awt.*;
+
+
+public class BattleEvent extends Event{
+
+    public static enum STATE{ STATE_PLAYER_TURN,
+			      STATE_ENEMY_TURN,			      
+			      STATE_ATTACKING,
+			      STATE_DAMAGED,
+			      STATE_NONE}
+    
+
+    private STATE now_state;
+    
+    private String[] conversations;
+
+    public static MessageWindow mes_window;
+
+    public static StatusWindow status_window;
+
+    public static SelectWindow command_window;
+
+    private EffectManager effect_manager;
+
+    private Enemy enemy;
+
+    private Effect attack_effect;
+
+    private Player player;
+    
+    private int enemy_damage;
+
+    public boolean boss;
+    
+    public BattleEvent(Enemy enemy,boolean boss){
+	super();
+	
+	this.conversations = conversations;
+	this.mes_window = Player.mes_window;
+	this.status_window = Player.status_window;
+
+
+	int sx = MainPanel.WIDTH / 8;
+	int sy = MainPanel.HEIGHT / 6;
+	
+
+	if(command_window == null){
+	    this.command_window = new SelectWindow("",
+						   sx + Player.status_window.get_WIDTH() + 80,
+						   sy - 30,
+						   select_s);
+	}
+
+	this.effect_manager = Game.effect_manager;
+	this.enemy = enemy;
+	this.now_state = STATE.STATE_NONE;
+	this.boss = boss;
+    }
+
+
+    public void start(){
+	super.start();
+	String[] conv = {enemy.state.NAME + ""};
+	mes_window.set_contents(conv);
+	mes_window.open();
+	status_window.open();
+	command_window.open();
+    }
+
+
+    public void end(){
+	super.end();
+	mes_window.close();
+	status_window.close();
+	command_window.close();
+    }
+
+
+    public void update(){	
+	if(happen){
+
+	    mes_window.update();
+	    command_window.update();
+
+
+	    enemy.update();
+	    effect_manager.update();
+
+
+	    final STATE st = this.now_state;
+	    if(this.mes_window.get_printing_message()) return;
+	    
+	    switch(st){
+		
+	    case STATE_ATTACKING:
+		if(!attack_effect.get_active()){
+
+		    this.enemy.state.HP -= enemy_damage;//被弾
+		    String[] conv = {enemy.state.NAME + "に" + String.valueOf(enemy_damage) + ""};
+		    this.mes_window.set_contents(conv);
+		    this.now_state = STATE.STATE_ENEMY_TURN;
+		}
+		break;
+
+	    case STATE_PLAYER_TURN:
+		if(player != null) {
+		    player.set_now_state(Player.STATE.STATE_BATTLE_EVENT);
+		}
+		break;
+		
+	    case STATE_ENEMY_TURN:
+		if(this.enemy.state.HP <= 0){
+		    String[] conv = {enemy.state.NAME + ""};
+		    this.mes_window.set_contents(conv);		    
+		    this.now_state = STATE.STATE_NONE;
+		    player.LEVEL_UP();
+		    player.set_now_state(Player.STATE.STATE_BATTLE_WIN);
+		}
+		else{
+
+		    int player_damage = Math.max(this.enemy.state.ATTACK / 2 - player.status.DEFFENCE / 4,0);
+		    String[] conv = {enemy.state.NAME};
+		    this.mes_window.set_contents(conv);
+		    
+		    player.damaged(this.enemy,player_damage);
+	
+		    if(player.status.HP <= 0) this.now_state = STATE.STATE_NONE;
+		    else this.now_state = STATE.STATE_PLAYER_TURN;
+		}
+		break;
+
+	    default:
+		break;
+	    }
+	    
+	}
+    }
+
+    /* こうげき */
+    public void Attack(Player player){
+	String[] conv = {""};
+	mes_window.set_contents(conv);
+
+	int basic_damage = player.status.ATTACK / 2 - enemy.state.DEFFENCE / 4;
+	int damage_change = basic_damage / 16 + 1;
+	
+	Random rnd = new Random();
+        int random_damage = rnd.nextInt(damage_change);
+	
+	this.enemy_damage = Math.max(basic_damage + random_damage,0);
+	
+	this.player = player;
+	this.now_state = STATE.STATE_ATTACKING;
+	this.attack_effect = effect_manager.get_effect("attack");
+	
+	attack_effect.start();
+
+    }
+
+    public void draw(Graphics g){
+	if(happen){
+
+	    mes_window.draw(g);
+	    status_window.draw(g);
+	    command_window.draw(g);
+
+	    enemy.draw(0,0,g);
+	    
+	    final STATE st = this.now_state;
+	    switch(st){
+	    case STATE_ATTACKING:
+		effect_manager.draw(g);
+		break;
+	    default:
+		break;
+	    }
+	}
+    }
+
+}
+import java.util.*;
+import java.awt.*;
+
+
+public class Effect extends Object{
+
+    private boolean active;
+
+    private int start;
+
+
+    private int WIDTH;
+    private int HEIGHT;
+
+    private int anime;
+    
+    public Effect(String filename,int anime_len,int posX,int posY,int width,int height){
+	super(filename,anime_len,posX,posY);
+	this.WIDTH = width;
+	this.HEIGHT = height;
+	active = false;
+    }
+
+    public void start(){
+	active = true;
+	this.start = Animation.getInstance().getNowCount();
+	this.animation_now = 0;
+	anime = 0;
+    }
+
+    public void stop(){
+	this.active = false;
+	this.animation_now = 0;
+	anime = 0;
+    }
+
+    public void update(){
+	if(active){
+	    // this.animation_now = Animation.getInstance().getNowCount() - start;
+	    // if(this.animation_now >= this.animation_length){
+	    // 	this.stop();
+	    // }
+	    
+	    anime++;
+	    if(anime >= this.animation_length){
+	    	this.stop();
+	    }
+	    
+	}
+    }
+        
+    public void draw(int offsetX,int offsetY,Graphics g){
+	if(active){
+	    Image image = resource.get_Image();
+	    //	    int a_now = this.animation_now;
+	    int a_now = this.anime;
+	    g.drawImage(image,
+			posX,posY,
+			posX + WIDTH,posY + HEIGHT,
+			a_now * WIDTH,0,
+			a_now * WIDTH + WIDTH,HEIGHT,
+			null);
+	}
+    }
+
+    public boolean get_active(){
+	return active;
+    }
+}
+
+
+import java.util.*;
+import java.awt.*;
+import java.io.*;
+
+public class EffectManager{
+    
+    private HashMap<String,Effect> effects;//エフェクト達
+    
+    public EffectManager(){
+	effects = new HashMap<String,Effect>();
+	loadFile("effect.txt");
+    }
+
+    
+    public void loadFile(String filename){
+	
+	String path = "data/" + filename;
+	try {
+            BufferedReader br = new BufferedReader(new InputStreamReader(getClass().getClassLoader().getResourceAsStream(path), "Shift_JIS"));
+            String line;
+            while ((line = br.readLine()) != null) {
+		
+    
+                if (line.equals("")) continue;
+    
+                if (line.startsWith("#")) continue;
+		String[] token = line.split(",");
+		
+    
+                String name = token[0];
+		String image_name = token[1];
+		int animation_len = Integer.parseInt(token[2]);
+		int width = Integer.parseInt(token[3]);
+		int height = Integer.parseInt(token[4]);
+		int x = MainPanel.WIDTH / 2 - width / 2;
+		int y = MainPanel.HEIGHT / 2 - height / 2 - 50;
+
+		effects.put(name,new Effect(image_name,animation_len,x,y,width,height));
+				
+            }
+        }catch(FileNotFoundException e){
+	    System.out.println(e);	
+        } catch (IOException e) {
+            e.printStackTrace();
+        }	
+
+    }
+
+
+    public void update(){
+	Iterator it = effects.keySet().iterator();
+	while (it.hasNext()) {
+	    java.lang.Object p = it.next();
+	    effects.get(p).update();
+	}
+    }
+
+
+    public void draw(Graphics g){
+	Iterator it = effects.keySet().iterator();
+	while (it.hasNext()) {
+	    java.lang.Object p = it.next();
+	    effects.get(p).draw(0,0,g);
+	}
+    }
+	
+
+    public Effect get_effect(String s){
+	if(!(effects.containsKey(s))) return null;
+	return effects.get(s);
+    }    
+
+}
+
+
+import java.awt.*;
+import java.util.*;
+
+
+public class Enemy extends Object{    
+
+
+    public State state;
+    
+    public Enemy(String filename,int anime_len,int posX,int posY,State state){
+	super(filename,anime_len,posX,posY);
+	this.state = state;
+    }
+    
+
+    public void update(){
+    }
+
+
+    public void draw(int offsetX,int offsetY,Graphics g){
+	Image image = resource.get_Image();
+	g.drawImage(image,posX,posY,null);
+    }
+
+}
+
+
+import java.io.*;
+import java.util.*;
+import java.awt.*;
+
+
+public class EnemyManager{
+    
+    private HashMap<String,Enemy> enemies;
+
+    
+    public EnemyManager(){
+	enemies = new HashMap<String,Enemy>();
+	loadFile("enemy.txt");
+    }
+
+
+    public void loadFile(String filename){
+	
+	String path = "data/" + filename;
+	try {
+            BufferedReader br = new BufferedReader(new InputStreamReader(getClass().getClassLoader().getResourceAsStream(path), "Shift_JIS"));
+            String line;
+            while ((line = br.readLine()) != null) {
+		
+
+                if (line.equals("")) continue;
+
+                if (line.startsWith("#")) continue;
+		String[] token = line.split(",");
+		
+
+                String name = token[0];
+		String image_name = token[1];
+		State state = new State(name);
+		ArrayList<Integer> array = new ArrayList<Integer>();
+		for(int i = 2; i < token.length; i++) array.add(Integer.parseInt(token[i]));
+		state.SetData(array);
+		int width = array.get(array.size() - 2);
+		int height = array.get(array.size() - 1);
+		int x = MainPanel.WIDTH / 2 - width / 2;
+		int y = MainPanel.HEIGHT / 2 - height / 2 - 50;
+		enemies.put(image_name,new Enemy(image_name,1,x,y,state));
+		
+            }
+        }catch(FileNotFoundException e){
+	    System.out.println(e);	
+        } catch (IOException e) {
+            e.printStackTrace();
+        }	
+
+    }
+    
+
+    public void update(){
+	Iterator it = enemies.keySet().iterator();
+	while (it.hasNext()) {
+	    java.lang.Object p = it.next();
+	    enemies.get(p).update();
+	}
+    }
+
+
+    public void draw(Graphics g){
+	Iterator it = enemies.keySet().iterator();
+	while (it.hasNext()) {
+	    java.lang.Object p = it.next();
+	    enemies.get(p).draw(0,0,g);
+	}
+    }
+
+
+    public Enemy get_enemy(String s){
+	if(!(enemies.containsKey(s))) return null;
+	return enemies.get(s);
+    }    
+}
+public class EnemyState extends State{
+    
+}
+
+
+
+import java.awt.*;
+
+
+public abstract class Event{
+
+
+    protected int posX;
+    protected int posY;
+    
+    protected boolean happen;
+
+
+    public Event(){
+	happen = false;
+
+
+    }
+
+    public void start(){
+	happen = true;
+    }    
+
+    public void end(){
+	happen = false;	
+    }    
+
+
+    public abstract void update();
+
+
+    public abstract void draw(Graphics g);
+
+
+    public boolean get_happen(){
+	return happen;
+    }
+}
+
+
+import java.io.*;
+import java.util.*;
+import java.awt.*;
+
+
+public class EventManager{
+    
+    private HashMap<Point,Event> events;
+
+    private ArrayList<BattleEvent> battles;
+
+    public static enum STATE{ STATE_NORMAL,
+			      STATE_STOP};
+
+    private STATE now_state;
+    
+    public EventManager(){
+	events = new HashMap<Point,Event>();
+	battles = new ArrayList<BattleEvent>();
+    }
+
+
+    public void loadEvents(String filename){
+	System.out.println("Loading... events");
+	String path = "event/" + filename;
+	try {
+	    events.clear();
+	    battles.clear();
+
+
+	    events.put(new Point(-1,-1),new TalkEvent(con));
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(getClass().getClassLoader().getResourceAsStream(path), "Shift_JIS"));
+            String line;
+            while ((line = br.readLine()) != null) {
+		
+
+                if (line.equals("")) continue;
+
+                if (line.startsWith("#")) continue;
+                StringTokenizer st = new StringTokenizer(line, ",");
+		
+                String eventType = st.nextToken();
+		
+                if (eventType.equals("TALK")) {  
+		    int x = Integer.parseInt(st.nextToken());
+		    int y = Integer.parseInt(st.nextToken());
+		    String mes = st.nextToken();		    
+		    String[] conv = mes.split("-");
+		    events.put(new Point(x,y),new TalkEvent(conv));
+		}
+		else if (eventType.equals("MOVE")) {
+		    int x = Integer.parseInt(st.nextToken());
+		    int y = Integer.parseInt(st.nextToken());
+		    String stage_name = st.nextToken();	
+		    events.put(new Point(x,y),new MoveEvent(stage_name));
+		}
+		else if (eventType.equals("SAVE")) {
+		    int x = Integer.parseInt(st.nextToken());
+		    int y = Integer.parseInt(st.nextToken());
+		    String mes = st.nextToken();
+		    String[] conv = mes.split("-");
+		    events.put(new Point(x,y),new SaveEvent(conv));
+		}
+		else if (eventType.equals("BATTLE")) {
+		    int x = Integer.parseInt(st.nextToken());
+		    int y = Integer.parseInt(st.nextToken());
+		    String enemy_name = st.nextToken();
+		    int enemy_level = Integer.parseInt(st.nextToken());
+		    int mode = Integer.parseInt(st.nextToken());
+		    Enemy enemy = Game.enemy_manager.get_enemy(enemy_name);
+		    boolean search = (mode == 1);
+		    if(enemy != null){
+			if(search)
+			    events.put(new Point(x,y),new BattleEvent(enemy,search));
+			else
+			    battles.add(new BattleEvent(enemy,search));
+		    }
+		}
+
+		
+            }
+	    this.now_state = STATE.STATE_NORMAL;
+        }catch(FileNotFoundException e){
+	    System.out.println(e);	
+        } catch (IOException e) {
+            e.printStackTrace();
+        }	
+
+    }
+    
+
+    public void update(){
+	final STATE state = this.now_state;
+	switch(state){
+	    
+	case STATE_NORMAL:
+	
+	    Iterator it = events.keySet().iterator();
+	    while (it.hasNext()) {
+		java.lang.Object p = it.next();
+		events.get(p).update();
+	    }
+	    for(int i = 0; i < battles.size(); i++) battles.get(i).update();
+	    break;
+
+	case STATE_STOP:
+	    break;
+	}
+    }
+
+    public void draw(Graphics g){
+	final STATE state = this.now_state;
+	switch(state){
+	    
+	case STATE_NORMAL:
+
+	    Iterator it = events.keySet().iterator();
+	    while (it.hasNext()) {
+		java.lang.Object p = it.next();
+		events.get(p).draw(g);
+	    }
+	    for(int i = 0; i < battles.size(); i++) battles.get(i).draw(g);
+	    break;
+
+	case STATE_STOP:
+	    break;
+	}
+    }
+
+
+    public Event get_event(Point p){
+	if(!(events.containsKey(p))) return null;
+	return events.get(p);
+    }
+
+    public BattleEvent get_battle_event(int walk){
+	int prob = (walk <= 5 ? 0 : walk / 25) * 100;
+	Random rnd = new Random();
+        int ran = rnd.nextInt(100);
+	if(ran < prob){
+	    int index = rnd.nextInt(battles.size());
+	    return battles.get(index);
+	}
+	return null;
+    }
+    
+
+    public STATE get_now_state(){
+	return now_state;
+    }
+
+    public void set_now_state(STATE now_state){
+	this.now_state = now_state;
+    }
+    
+}
+import java.awt.*;
+import java.awt.event.*;
+
+public class Game implements KeyListener{
+
+    public static enum STATE{ STATE_GAME,
+			      STATE_NOW_LOADING,
+			      STATE_GAME_CLEAR,
+			      STATE_GAME_OVER,
+			      STATE_STAFF_ROLL};
+
+    private STATE now_state;
+    
+    private Map map;
+
+    private EventManager event_manager;
+
+    public static EnemyManager enemy_manager;
+    
+    public static EffectManager effect_manager;
+
+    private Player player;
+
+    private boolean bootup;
+
+    private StaffRoll staff_roll;
+    
+    public Game(){
+	bootup = true;
+	now_state = STATE.STATE_NOW_LOADING;
+	
+	event_manager = new EventManager();
+	enemy_manager = new EnemyManager();
+	effect_manager = new EffectManager();
+	
+	player = new Player(event_manager,"Player.png",2,0,0);
+	player.load();
+	
+
+	map = new Map(event_manager,player);
+
+	Load(player.get_now_stage());
+	bootup = false;
+
+	staff_roll = new StaffRoll();
+	this.now_state = STATE.STATE_GAME_CLEAR;
+    }
+
+
+    public void Load(String stage_name){
+	String map_name = stage_name + ".txt";
+	String event_name = "event_" + stage_name + ".txt";
+	map.loadFile(map_name,bootup);
+	event_manager.loadEvents(event_name);
+	now_state = STATE.STATE_GAME;
+    }
+    
+    public void update(){
+	final STATE state = this.now_state;
+	switch(state){
+	    
+	case STATE_GAME:
+	    //System.out.println(map.get_now_state() == Map.STATE.STATE_STOP);
+	    if(map.get_now_state() == Map.STATE.STATE_STOP){
+
+		this.now_state = STATE.STATE_NOW_LOADING;
+	    }
+	    else if(map.get_now_state() == Map.STATE.STATE_GAME_OVER){
+
+		this.now_state = STATE.STATE_GAME_OVER;
+	    }
+	    else if(map.get_now_state() == Map.STATE.STATE_GAME_CLEAR){
+
+		this.now_state = STATE.STATE_GAME_CLEAR;
+	    }	    
+	    
+	    else{
+		map.update();
+		event_manager.update();
+	    }
+	    break;
+
+	case STATE_NOW_LOADING:
+	    Load(this.player.get_now_stage());
+	    map.set_now_state(Map.STATE.STATE_COMPLETE_LOADING);
+	    break;
+
+	case STATE_GAME_CLEAR:
+	    staff_roll.start();
+	    this.now_state = STATE.STATE_STAFF_ROLL;
+	    break;
+
+	case STATE_STAFF_ROLL:
+	    staff_roll.update();
+	    if(!staff_roll.get_active()) this.now_state = STATE.STATE_NOW_LOADING;
+	    break;
+	    
+	case STATE_GAME_OVER:
+	    this.player.load();
+	    Load(this.player.get_now_stage());
+	    // player.status.HP = player.status.MAX_HP;
+	    // player.status.MP = player.status.MAX_MP;
+	    map.set_now_state(Map.STATE.STATE_COMPLETE_LOADING);
+	    break;
+	    
+	}
+    }
+    
+    public void draw(Graphics g){
+	final STATE state = this.now_state;
+	switch(state){
+	    
+	case STATE_GAME:
+	
+	    map.draw(g);
+	    event_manager.draw(g);
+	    
+	    break;
+
+	case STATE_GAME_CLEAR:
+	    break;
+
+	case STATE_STAFF_ROLL:
+	    staff_roll.draw(g);
+	    break;
+	    
+	case STATE_NOW_LOADING
+
+	    g.setColor(Color.BLACK);
+	    g.fillRect(0,0,MainPanel.WIDTH,MainPanel.HEIGHT);
+	    break;
+	    
+	default:
+	    break;
+	    
+	}
+
+    }
+    
+
+    public void keyPressed(KeyEvent e) {
+	int keyCode = e.getKeyCode();
+        //System.out.println("Press: " + e.getKeyText(e.getKeyCode()));
+	
+	KeyBoard mInstance = KeyBoard.getInstance();        
+        switch (keyCode) {
+	case KeyEvent.VK_UP :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_UP);
+	    break;
+	case KeyEvent.VK_DOWN :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_DOWN);
+	    break;
+	case KeyEvent.VK_RIGHT :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_RIGHT);
+	    break;
+	case KeyEvent.VK_LEFT :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_LEFT);
+	    break;
+	case KeyEvent.VK_Z :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_Z);
+	    break;
+	case KeyEvent.VK_X :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_X);
+	    break;
+	case KeyEvent.VK_C :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_C);
+	    break;
+	case KeyEvent.VK_SPACE :
+	    mInstance.Press(KeyBoard.KEY_CODE.KEY_SPACE);
+	    break;
+	default:
+	    break;
+	}	    
+    }
+    
+    public void keyReleased(KeyEvent e) {
+	int keyCode = e.getKeyCode();
+        //System.out.println("Release: " + e.getKeyText(e.getKeyCode()));
+	KeyBoard mInstance = KeyBoard.getInstance();
+	
+        switch (keyCode) {
+	case KeyEvent.VK_UP :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_UP);
+	    break;
+	case KeyEvent.VK_DOWN :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_DOWN);
+	    break;
+	case KeyEvent.VK_RIGHT :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_RIGHT);
+	    break;
+	case KeyEvent.VK_LEFT :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_LEFT);
+	    break;
+	case KeyEvent.VK_Z :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_Z);
+	    break;
+	case KeyEvent.VK_X :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_X);
+	    break;
+	case KeyEvent.VK_C :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_C);
+	    break;
+	case KeyEvent.VK_SPACE :
+	    mInstance.Release(KeyBoard.KEY_CODE.KEY_SPACE);
+	    break;
+	default:
+	    break;
+	}	    
+	
+    }
+    
+    public void keyTyped(KeyEvent e) {
+	//System.out.println("Type: " + e.getKeyText(e.getKeyCode()));
+    }
+
+}
+
+
+public class KeyBoard{
+    private static KeyBoard mInstance = new KeyBoard();
+
+
+    public static enum KEY_CODE{ KEY_UP,
+				 KEY_DOWN,
+				 KEY_RIGHT,
+				 KEY_LEFT,
+				 KEY_Z,
+				 KEY_X,
+				 KEY_C,
+				 KEY_SPACE,
+				 KEY_NONE };
+
+
+    public static enum MODE{ MODE_NORMAL,
+			     MODE_TOGGLE };
+    
+    private static final int Key_Kind = 9;
+
+    //private MODE mode;
+    
+    private boolean[] Key_Code;
+
+    private boolean[] first_push;
+
+    private boolean[] before;
+    
+    private KeyBoard(){
+	Key_Code = new boolean[Key_Kind];
+	first_push = new boolean[Key_Kind];
+	//mode = MODE_NORMAL;
+	before = new boolean[Key_Kind];
+    }
+
+
+    public void Press(KEY_CODE p){
+	//System.out.println("Press");
+	this.Key_Code[p.ordinal()] = true;
+    }
+
+
+    public void Release(KEY_CODE p){
+	//System.out.println("Release");
+	this.Key_Code[p.ordinal()] = false;
+    }
+
+
+    public boolean IsPressed(KEY_CODE p,MODE mode){
+	if(mode == MODE.MODE_TOGGLE){	
+	    //	System.out.println(before);
+	    if(!before[p.ordinal()] && this.Key_Code[p.ordinal()]){
+		//	    System.out.println("change");
+		first_push[p.ordinal()] = true;
+	    }else{
+		first_push[p.ordinal()] = false;
+	    }
+	    before[p.ordinal()] = this.Key_Code[p.ordinal()];
+
+	    boolean res = (this.Key_Code[p.ordinal()] && this.first_push[p.ordinal()]) == true;
+	    // if(res)
+	    // 	System.out.println("#####toggle#####");
+	    return res;
+	}	
+	return this.Key_Code[p.ordinal()] == true;
+    }
+
+
+    public boolean IsReleased(KEY_CODE p){
+	return this.Key_Code[p.ordinal()] == false;
+    }
+    
+
+    public static KeyBoard getInstance(){
+	return mInstance;
+    }
+}
+
+
+import java.awt.*;
+import javax.swing.*;
+
+public class MainFrame extends JFrame {
+    public MainFrame() {
+        setTitle("RPGTest");
+	MainPanel main_panel = new MainPanel();
+        Container contentPane = getContentPane();
+        contentPane.add(main_panel,BorderLayout.CENTER);
+
+        pack();
+    }
+
+    public static void main(String[] args) {
+        MainFrame frame = new MainFrame();
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+	frame.setResizable(false);
+        frame.setVisible(true);
+    }
+}
+
+
+import javax.swing.*;
+import java.awt.*;
+import java.util.*;
+import java.awt.event.*;
+
+
+
+public class MainPanel extends JPanel implements Runnable{
+
+
+    public static final int WIDTH = MapChip.CHIP_SIZE * Map.DISPLAY_ROW;
+    public static final int HEIGHT = MapChip.CHIP_SIZE * Map.DISPLAY_COL;
+    
+    public static final double FPS = 40;//画面のFPS
+    public static final double Repaint_Interval = 1.0 / FPS * 1000;
+    
+    private Game game;
+
+
+    private AnimationThread animation_thread;
+
+
+    private Thread game_loop;
+    private Thread animation_loop;
+
+    public MainPanel() { 
+        setPreferredSize(new Dimension(WIDTH, HEIGHT));
+	setFocusable(true);
+	
+
+	game = new Game();
+		
+	addKeyListener(game);
+
+
+	animation_thread = new AnimationThread();
+	
+
+	game_loop = new Thread(this);
+	animation_loop = new Thread(animation_thread);
+
+
+	game_loop.start();
+	animation_loop.start();
+	
+    }
+
+
+    public void run(){
+	while(true){
+	    
+	    game.update();
+	    
+	    repaint();
+	    try {
+		Thread.sleep((long)Repaint_Interval);
+	    } catch (InterruptedException e) {
+		e.printStackTrace();
+	    }
+
+	}
+    }
+
+
+    public void paintComponent(Graphics g) {
+        super.paintComponent(g);
+	game.draw(g);
+    }
+
+}
+
+
+import java.io.*;
+import java.util.*;
+import java.awt.*;
+
+
+public class Map{
+    
+    public static final int Frame_Of_Move = Player.Frame_Of_Move;
+
+    public static enum STATE{ STATE_NORMAL,
+			      STATE_STOP,
+			      STATE_COMPLETE_LOADING,
+			      STATE_GAME_CLEAR,
+			      STATE_GAME_OVER};
+    
+    
+
+    public static final int DISPLAY_COL = 21;
+    public static final int DISPLAY_ROW = 21;
+    
+
+    private static int COL;
+    private static int ROW;
+    
+    
+    private static MapChip[][] map_chips;
+    
+    private ArrayList<Object> objects;
+
+    private Player player;
+
+    private EventManager event_manager;
+
+    private STATE now_state;
+    
+    public Map(EventManager em,Player player){
+	this.event_manager = em;
+	objects = new ArrayList<Object>();
+	this.player = player;
+	this.now_state = STATE.STATE_NORMAL;
+    }
+
+    public void loadFile(String filename,boolean init){
+	String path = "map/" + filename;
+	try {
+	    objects.clear();
+	    File file = new File(path);
+	    BufferedReader in = new BufferedReader(new FileReader(file));
+            
+
+            ROW = Integer.parseInt(in.readLine());
+            COL = Integer.parseInt(in.readLine());
+	    int pX = Integer.parseInt(in.readLine());
+	    int pY = Integer.parseInt(in.readLine());
+
+	    if(!init){
+		this.player.set_posX(pX);
+		this.player.set_posY(pY);
+	    }
+			
+	    objects.add(this.player);
+	    
+	    System.out.println(ROW + "," + COL);
+
+            map_chips = new MapChip[ROW][COL];
+	    
+            for (int i = 0; i < ROW; i++) {
+		String line = in.readLine();
+                for (int j = 0; j < COL; j++) {
+		    final int chip = line.charAt(j);
+		    System.out.print((char)chip);
+		    int y = MapChip.CHIP_SIZE * i;
+		    int x = MapChip.CHIP_SIZE * j;
+		    
+		    switch(chip){
+
+		    case '#':
+			map_chips[i][j] = new MapChip(MapChip.CHIP_TYPE.CHIP_BLOCK,x,y,true);
+			break;
+			
+
+		    case '.':
+			map_chips[i][j] = new MapChip(MapChip.CHIP_TYPE.CHIP_TYLE,x,y,false);
+			break;
+
+
+		    case 's':
+			map_chips[i][j] = new MapChip(MapChip.CHIP_TYPE.CHIP_SAND,x,y,false);
+			break;
+
+
+		    case 'T':
+			map_chips[i][j] = new MapChip(MapChip.CHIP_TYPE.CHIP_GROVE,x,y,true);
+			break;
+			
+
+		    case 'd':
+			map_chips[i][j] = new MapChip(MapChip.CHIP_TYPE.CHIP_DOWN_STAIR,x,y,false);
+			break;
+						
+			/* タイル */
+		    default:
+			map_chips[i][j] = new MapChip(MapChip.CHIP_TYPE.CHIP_TYLE,x,y,false);
+			break;
+			
+		    }
+                }
+		System.out.println("");
+            }
+            in.close();
+
+	    this.now_state = STATE.STATE_NORMAL;
+        }catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }catch(IOException e){
+	    System.out.println(e);
+	}
+    }
+    
+
+    public void update(){
+	final STATE state = this.now_state;
+	switch(state){
+	    
+	case STATE_NORMAL:
+
+	    if(player.get_now_state() == Player.STATE.STATE_MOVE_STAGE_EVENT){
+
+		this.event_manager.set_now_state(EventManager.STATE.STATE_STOP);
+		this.now_state = STATE.STATE_STOP;
+	    }
+	    else if(player.get_now_state() == Player.STATE.STATE_BATTLE_LOSE){
+		this.event_manager.set_now_state(EventManager.STATE.STATE_STOP);
+		this.now_state = STATE.STATE_GAME_OVER;
+	    }
+	    else if(player.get_now_state() == Player.STATE.STATE_CLEAR){
+		this.event_manager.set_now_state(EventManager.STATE.STATE_STOP);
+		this.now_state = STATE.STATE_GAME_CLEAR;
+	    }
+	    
+	    else{
+
+		for(int i = 0; i < objects.size(); i++){
+		    objects.get(i).update();
+		}
+	    }
+	    break;
+
+	case STATE_STOP:
+	    break;
+
+	case STATE_GAME_CLEAR:
+	    break;
+	    
+	case STATE_GAME_OVER:
+	    break;
+	    
+	case STATE_COMPLETE_LOADING:
+	    player.set_now_state(Player.STATE.STATE_MOVE);
+	    player.set_walking(0);
+	    this.now_state = STATE.STATE_NORMAL;
+	    break;
+
+	default:
+	    break;
+	    
+	}
+	
+    }
+    
+
+    public void draw(Graphics g){
+	final STATE state = this.now_state;
+	switch(state){
+	    
+	case STATE_NORMAL:
+	
+	    int frame_count = player.get_frame_count();
+	
+	    int chip_size = MapChip.CHIP_SIZE;
+	
+	    double one_frame = (double)chip_size / (double)Frame_Of_Move;
+	    double frame_offset = 0;
+	
+	    if(frame_count < 0) frame_offset = 0;
+	    else frame_offset = one_frame * ((double)Frame_Of_Move - (double)frame_count - 1);
+
+	    int dx = Object.DirectionVector[player.get_now_dir().ordinal()][0];
+	    int dy = Object.DirectionVector[player.get_now_dir().ordinal()][1];
+
+	    int pX = player.get_posX() * chip_size - (int)frame_offset * dx;
+	    int pY = player.get_posY() * chip_size - (int)frame_offset * dy;
+	
+
+	    int offsetX = Math.min(player.get_start_x() * chip_size - pX,0);
+	    offsetX = Math.max(offsetX, MainPanel.WIDTH - ROW * chip_size);
+	
+	    int offsetY = Math.min(player.get_start_y() * chip_size - pY,0);
+	    offsetY = Math.max(offsetY, MainPanel.HEIGHT - COL * chip_size);
+
+
+	    int sx = -offsetX / chip_size;
+	    int sy = -offsetY / chip_size;
+	    //System.out.println(new Point(sx,sy));
+	
+
+	    for(int y = sy; y <= Math.min(sy + DISPLAY_COL,COL - 1); y++){
+		for(int x = sx; x <= Math.min(sx + DISPLAY_ROW,ROW - 1); x++){
+		    map_chips[y][x].draw(offsetX,offsetY,g);
+		}
+	    }
+
+	
+
+	    for(int i = 0; i < objects.size(); i++){
+		objects.get(i).draw(offsetX,offsetY,g);
+	    }
+
+	    break;
+
+	case STATE_STOP:
+	    break;
+
+	}
+
+    }
+
+
+    public Player get_Player(){
+	return player;
+    }
+
+
+    public STATE get_now_state(){
+	return now_state;
+    }
+
+
+    public void set_now_state(STATE now_state){
+	this.now_state = now_state;
+    }
+    
+
+    public static boolean isInMap(int x,int y){
+	return 0 <= x && x < COL && 0 <= y && y < ROW;
+    }
+
+
+    public static boolean isCollision(int x,int y){
+	return map_chips[y][x].get_collision();
+    }
+}
+
+
+import java.awt.*;
+
+
+public class MapChip{
+
+    public static enum CHIP_TYPE{ CHIP_TYLE,
+				  CHIP_BLOCK,
+				  CHIP_DOWN_STAIR,
+				  CHIP_SAND,
+				  CHIP_GROVE};
+
+
+    public static final String[] CHIP_IMAGE= { "tyle.png",
+					       "block.png",
+					       "downstair.png",
+					       "sand.png",
+					       "grove.png"};
+    
+    public static final int CHIP_SIZE = 32;
+    
+    private Resource resource;
+
+    private CHIP_TYPE chip_type;
+
+    private boolean collision;
+
+
+    private int posX;
+    private int posY;
+
+    public MapChip(CHIP_TYPE type,int posX,int posY,boolean coll){
+	this.chip_type = type;
+	this.collision = coll;
+	this.posX = posX;
+	this.posY = posY;
+	String image_name = CHIP_IMAGE[type.ordinal()];
+	resource = new Resource(image_name);
+    }
+
+    public void draw(int offsetX,int offsetY,Graphics g){	
+	Image image = resource.get_Image();
+	int x = posX + offsetX;
+	int y = posY + offsetY;
+	
+	g.drawImage(image,x,y,null);
+    }
+
+    boolean get_collision(){
+	return collision;
+    }
+}
+import java.awt.*;
+import java.util.HashMap;
+
+import javax.swing.ImageIcon;
+
+
+public class MessageString{
+
+
+    private static Resource fontImage;
+    
+    private static HashMap<String,Point> kana2Pos;
+
+    public static enum COLOR{ WHITE,
+			      RED,
+			      GREEN,
+			      BLUE };
+
+
+    public static final int FONT_WIDTH = 16;
+    public static final int FONT_HEIGHT = 22;
+    
+    private COLOR color;
+
+    
+    public MessageString(COLOR color){
+
+	if(fontImage == null){
+
+	    fontImage = new Resource("font.gif");
+	}
+
+
+	if(kana2Pos == null){
+
+	    kana2Pos = new HashMap<String,Point>();
+	    createHash();
+	}
+        
+	this.color = color;
+	
+    }
+
+
+    public void drawMessage(Graphics g,int x,int y,String message){
+	for(int i = 0; i < message.length(); i++){
+	    char c = message.charAt(i);
+	    String c_s = String.valueOf(c);
+	    Point pos = (Point)kana2Pos.get(c_s);
+	    
+	    int color_width = 160;
+	    
+	    int now_x = x + FONT_WIDTH * i;
+	    int px = pos.x * FONT_WIDTH + color_width * color.ordinal();
+	    int py = pos.y * FONT_HEIGHT;
+	    
+	    Image image = fontImage.get_Image();
+
+
+	    g.drawImage(image,
+	    		now_x,y,
+	    		now_x + FONT_WIDTH,y + FONT_HEIGHT,
+	    		px,py,
+	    		px + FONT_WIDTH,py + FONT_HEIGHT,
+	    		null);
+	    
+	}
+    }
+
+
+    public void set_Color(COLOR color){
+	this.color = color;
+    }
+
+
+    public COLOR get_Color(){
+	return color;
+    }
+    
+
+    private void createHash() {
+    }
+    
+}
+
+import java.awt.*;
+import java.util.*;
+
+
+public class MessageWindow extends Window{
+    private static final long Char_Interval = 100L;
+
+    private String[] contents;
+
+    private boolean printing_message;
+
+    private int conversation_index;
+
+    private boolean init;
+
+
+    private Timer timer;
+    private DrawingMessageTask task;
+    
+    public MessageWindow(String title,int x,int y,int w,int h){
+	super(title,x,y,w,h);
+	message.set_Color(MessageString.COLOR.WHITE);
+	conversation_index = 0;
+	task = null;
+	timer = new Timer();	
+	init = true;
+	printing_message = false;
+    }
+
+
+    public boolean next(){
+	conversation_index++;
+
+	if(conversation_index >= contents.length){
+	    conversation_index = 0;
+	    init = true;
+	    task = null;
+	    return false;
+	}
+	printing_message = true;
+	task = null;	
+	task = new DrawingMessageTask();
+	timer.schedule(task, 0L, Char_Interval);
+	return true;
+    }
+    
+
+    public void update(){
+	if(active){
+	    if(init){
+		task = new DrawingMessageTask();
+		timer.schedule(task, 0L, Char_Interval);
+		init = false;
+		printing_message = true;
+	    }
+	    super.update();
+	    boolean end = task.get_string_index() >= this.contents[conversation_index].length() - 1;
+	    if(end){
+		printing_message = false;
+		task.cancel();
+	    }
+	}
+    }
+    
+    public void draw(Graphics g){
+	super.draw(g);
+	if(active){
+	    if(task != null){
+		String mes_value = this.contents[conversation_index];
+	    	 
+		String mes = mes_value.substring(0,task.get_string_index() + 1);
+		// if(task.get_string_index() < mes_value.length() - 1)
+		// 	System.out.print(task.get_string_index()+",");
+
+		int mx = posX + Window.EDGE_SIZE * 3;
+		int my = posY + Window.EDGE_SIZE * 5;
+		int line_chars = (WIDTH - 4 * Window.EDGE_SIZE) / MessageString.FONT_WIDTH;
+		int line_num = mes.length() / line_chars + (mes.length() % line_chars == 0 ? 0 : 1);
+		int l = 0; int r = line_chars;
+		for(int i = 0; i < line_num; i++){
+		    message.drawMessage(g,
+					mx,
+					my + MessageString.FONT_HEIGHT * i,
+					mes.substring(l,Math.min(r,mes.length())));
+		    l = r;
+		    r = l + line_chars;
+		}
+	    
+	    }
+	}
+    }
+
+    public int get_conversation_index(){
+	return conversation_index;
+    }
+
+
+    public boolean get_printing_message(){
+	return printing_message;
+    }
+
+
+    public String[] get_contents(){
+	
+	return contents;
+    }
+
+    public void set_contents(String[] contents){
+	task = null;
+	init = true;
+	conversation_index = 0;
+	printing_message = false;
+	this.contents = contents;
+    }
+    
+
+    private class DrawingMessageTask extends TimerTask {
+    
+	private int string_index;
+    
+	public DrawingMessageTask(){
+	    super();
+	    string_index = 0;
+	}
+    
+	public void run() {
+	    string_index++;
+	}
+
+	public int get_string_index(){
+	    return string_index;
+	}
+    }
+    
+}
+
+
+
+import java.awt.*;
+
+
+public class MoveEvent extends Event{
+    private String next_stage;
+    
+    public MoveEvent(String next_stage){
+	super();
+	this.next_stage = next_stage;
+    }
+
+
+    public void start(){
+	super.start();
+    }
+
+
+    public void end(){
+	super.end();
+    }
+
+
+    public void update(){
+	if(happen){
+	}
+    }
+    
+
+    public void draw(Graphics g){
+	if(happen){
+	}
+    }
+
+
+    public String get_next_stage(){
+	return next_stage;
+    }
+}
+
+
+import java.awt.*;
+
+public abstract class Object{
+
+
+    public static enum DIRECTION{ DOWN,
+				  UP,
+				  LEFT,
+				  RIGHT };
+
+    public static final int[][] DirectionVector = { {0,1},
+						    {0,-1},
+						    {-1,0},
+						    {1,0} };
+
+    protected DIRECTION now_dir;
+    
+    protected Resource resource;
+
+    protected int animation_now;
+    
+    protected int animation_length;
+    
+
+    protected int posX;
+    protected int posY;
+    
+    public Object(String filename,int anime_len,int posX,int posY){
+	resource = new Resource(filename);
+	animation_length = anime_len;
+	this.posX = posX;
+	this.posY = posY;
+	now_dir = DIRECTION.DOWN;
+    }
+
+
+    public abstract void update();
+
+
+    public abstract void draw(int offsetX,int offsetY,Graphics g);    
+
+
+    public DIRECTION get_now_dir(){
+	return now_dir;
+    }
+
+    
+
+    public int get_posX(){
+	return posX;
+    }
+
+
+    public int get_posY(){
+	return posY;
+    }
+
+}
+
+
+import java.awt.*;
+
+
+public abstract class Person extends Object{    
+    
+    public Person(String filename,int anime_len,int posX,int posY){
+	super(filename,anime_len,posX,posY);
+    }
+    
+
+    public abstract void update();
+
+
+    public abstract void draw(int s_x,int s_y,Graphics g);
+
+}
+
+
+import java.awt.*;
+import java.util.*;
+import java.io.*;
+
+
+public class Player extends Person{
+
+    public static final int Frame_Of_Move = 7;
+    
+    public static enum STATE{ STATE_MOVE,
+			      STATE_WAITING,
+			      STATE_STATUS_WINDOW_OPEN,
+			      STATE_STRENGTH_WINDOW_OPEN,
+			      STATE_MAGIC_WINDOW_OPEN,
+			      STATE_ITEM_WINDOW_OPEN,
+			      STATE_TALK_EVENT,
+			      STATE_BATTLE_EVENT,
+			      STATE_BATTLE_WIN,
+			      STATE_BATTLE_LOSE,
+			      STATE_MOVE_STAGE_EVENT,
+			      STATE_SAVE_EVENT,
+			      STATE_CLEAR};
+
+
+    public State status;
+
+
+    public static StatusWindow status_window;
+    public static SelectWindow select_window;
+    public static StatusWindow strength_window;
+    public static MessageWindow mes_window;
+    public static SelectWindow decide_window;
+
+    
+    private STATE now_state;
+
+    private String now_stage;
+    
+    private int frame_count;
+
+    private EventManager event_manager;
+
+    private Event now_event;
+
+    private TalkEvent now_talk_event;
+
+    private BattleEvent now_battle_event;
+    
+    private MoveEvent now_move_event;
+    
+    private SaveEvent now_save_event;
+
+    private int walking;
+
+
+    private int start_x;
+    private int start_y;
+    
+    public Player(EventManager em,String filename,int anime_len,int posX,int posY){
+	super(filename,anime_len,posX,posY);
+	status = new State();
+	this.start_x = (Map.DISPLAY_ROW - 1) / 2;
+	this.start_y = (Map.DISPLAY_COL - 1) / 2;
+	this.event_manager = em;
+	frame_count = -1;
+	
+	now_state = STATE.STATE_MOVE;
+	walking = 0;
+    }
+
+
+    public void move(final DIRECTION dir){
+		
+	this.now_dir = dir;
+	int dx = DirectionVector[dir.ordinal()][0];
+	int dy = DirectionVector[dir.ordinal()][1];
+	int nx = posX + dx;
+	int ny = posY + dy;
+	if(!Map.isInMap(nx,ny)) return;
+	if(Map.isCollision(nx,ny)) return;	
+	frame_count = 0;
+	posX = nx;
+	posY = ny;
+	walking++;
+	System.out.println(new Point(posX,posY));
+
+    }
+    
+
+    public void update(){
+	
+
+	KeyBoard mInstance = KeyBoard.getInstance();
+	boolean up = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_UP,
+					 KeyBoard.MODE.MODE_NORMAL);
+	boolean down = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_DOWN,
+					   KeyBoard.MODE.MODE_NORMAL);
+	boolean right = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_RIGHT,
+					    KeyBoard.MODE.MODE_NORMAL);
+	boolean left = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_LEFT,
+					   KeyBoard.MODE.MODE_NORMAL);
+
+
+	boolean up_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_UP,
+					   KeyBoard.MODE.MODE_TOGGLE);
+	boolean down_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_DOWN,
+					     KeyBoard.MODE.MODE_TOGGLE);
+	boolean right_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_RIGHT,
+					      KeyBoard.MODE.MODE_TOGGLE);
+	boolean left_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_LEFT,
+					     KeyBoard.MODE.MODE_TOGGLE);
+	
+	boolean z_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_Z,
+					  KeyBoard.MODE.MODE_TOGGLE);
+	boolean x_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_X,
+					  KeyBoard.MODE.MODE_TOGGLE);
+	
+	boolean space_t = mInstance.IsPressed(KeyBoard.KEY_CODE.KEY_SPACE,
+					      KeyBoard.MODE.MODE_TOGGLE);
+
+
+
+	this.animation_now = Animation.getInstance().getNowCount();
+	this.animation_now = this.animation_now % this.animation_length;
+
+	
+
+	update_windows();
+	status_window.update();
+	select_window.update();
+	strength_window.update();
+
+	
+	
+
+	final STATE state = this.now_state;
+	
+	switch(state){
+	    
+	case STATE_MOVE:
+	    if(0 <= frame_count && frame_count < Frame_Of_Move){
+		frame_count++;
+		return; 
+	    }
+	    frame_count = -1;
+
+
+	    now_battle_event = event_manager.get_battle_event(this.walking);
+	    
+
+	    if(z_t){
+		boolean res = search();
+	    }
+	    else if(up){
+		move(DIRECTION.UP);
+	    }
+	    else if(down){
+		move(DIRECTION.DOWN);
+	    }
+	    else if(left){
+		move(DIRECTION.LEFT);
+	    }
+	    else if(right){
+		move(DIRECTION.RIGHT);
+	    }
+	    else if(space_t){
+
+		open_window();
+		this.now_state = STATE.STATE_STATUS_WINDOW_OPEN;//遷移
+	    }
+
+
+	    Event event_tmp = event_manager.get_event(new Point(posX,posY));	    
+	    if(event_tmp != null){
+
+		if(event_tmp instanceof MoveEvent){
+
+		    now_move_event = (MoveEvent)event_tmp;
+		    String next_stage = now_move_event.get_next_stage();
+		    this.move_stage(next_stage);
+		}
+	    }
+	    
+	    if(now_battle_event != null){
+
+	    	this.walking = 0;
+	    	now_battle_event.start();
+	    	this.now_state = STATE.STATE_BATTLE_EVENT;
+	    }
+	    
+	    break;
+	    
+	case STATE_STATUS_WINDOW_OPEN:
+	    if(z_t){
+		Point sp = select_window.get_select_point();
+		final String sel_s = select_window.get_selected_list(sp);
+		if(sel_s == ""){
+		    strength_window.open();
+		    now_state = STATE.STATE_STRENGTH_WINDOW_OPEN;
+		}
+		else if(sel_s == ""){
+		    boolean res = search();
+		    close_window();
+		}		
+	    }
+	    else if(up_t){
+		select_window.move_cursor(DIRECTION.UP);
+	    }
+	    else if(down_t){
+		select_window.move_cursor(DIRECTION.DOWN);
+	    }
+	    else if(left_t){
+		select_window.move_cursor(DIRECTION.LEFT);
+	    }
+	    else if(right_t){
+		select_window.move_cursor(DIRECTION.RIGHT);
+	    }
+	    else if(x_t){
+		close_window();
+		now_state = STATE.STATE_MOVE;
+	    }
+	    break;
+
+	case STATE_STRENGTH_WINDOW_OPEN:
+	    if(x_t){
+		strength_window.close();
+		now_state = STATE.STATE_STATUS_WINDOW_OPEN;
+	    }
+	    break;
+	    
+	case STATE_TALK_EVENT:
+
+	    if(z_t){
+		
+		boolean hasNext = (now_talk_event).next();
+		if(!hasNext){
+		    this.now_state = STATE.STATE_MOVE;
+		}		
+	    }
+	    break;
+	    
+	case STATE_BATTLE_EVENT:
+	    SelectWindow command_window = BattleEvent.command_window;
+	    if(mes_window.get_printing_message()) break;
+	    if(z_t){
+		Point sp = command_window.get_select_point();
+		final String sel_s = command_window.get_selected_list(sp);
+		if(sel_s == ""){
+		    this.now_battle_event.Attack(this);
+		    this.now_state = STATE.STATE_WAITING;
+
+		}		
+	    }
+	    else if(up_t){
+		command_window.move_cursor(DIRECTION.UP);
+	    }
+	    else if(down_t){
+		command_window.move_cursor(DIRECTION.DOWN);
+	    }
+	    else if(left_t){
+		command_window.move_cursor(DIRECTION.LEFT);
+	    }
+	    else if(right_t){
+		command_window.move_cursor(DIRECTION.RIGHT);
+	    }
+	    
+	    break;
+	    
+	case STATE_SAVE_EVENT:
+
+	    if(z_t){
+		boolean hasNext = (now_save_event).next();
+		if(!hasNext){
+		    now_save_event.save(this);
+		    this.now_state = STATE.STATE_MOVE;
+		}		
+	    }
+	    
+	    break;
+
+	case STATE_BATTLE_WIN:
+	    if(now_battle_event.mes_window.get_printing_message()) break;
+	    now_battle_event.end();
+	    if(now_battle_event.boss){
+		this.now_state = STATE.STATE_CLEAR;
+	    }
+	    else{
+		this.now_state = STATE.STATE_MOVE;
+	    }
+	    break;
+
+	case STATE_CLEAR:
+	    break;
+	    
+	case STATE_BATTLE_LOSE:
+	    break;
+	    
+	case STATE_MOVE_STAGE_EVENT:
+
+	    break;
+
+	case STATE_WAITING:
+
+	    break;
+	default:
+	    break;
+	}
+
+	
+	
+    }
+
+
+    public void draw(int s_x,int s_y,Graphics g){
+	if(this.now_state != STATE.STATE_BATTLE_EVENT &&
+	   this.now_state != STATE.STATE_WAITING){
+	    Image image = resource.get_Image();
+	
+	    int chip_size = MapChip.CHIP_SIZE;
+	
+
+	    double one_frame = (double)chip_size / (double)Frame_Of_Move;
+	    double frame_offset = 0;
+	
+	    if(frame_count < 0) frame_offset = 0;
+	    else frame_offset = one_frame * ((double)Frame_Of_Move - (double)frame_count - 1);
+	
+	    int dx = DirectionVector[now_dir.ordinal()][0];
+	    int dy = DirectionVector[now_dir.ordinal()][1];
+
+
+
+	    int draw_x = posX * chip_size - (int)frame_offset * dx + s_x;
+	    int draw_y = posY * chip_size - (int)frame_offset * dy + s_y;
+	
+	    g.drawImage(image,
+			draw_x,
+			draw_y,
+			draw_x + chip_size,
+			draw_y + chip_size,
+			animation_now * chip_size,
+			now_dir.ordinal() * chip_size,
+			animation_now * chip_size + chip_size,
+			now_dir.ordinal() * chip_size + chip_size,
+			null);
+	
+
+	status_window.draw(g);
+	select_window.draw(g);
+	strength_window.draw(g);
+
+	}
+    }
+
+
+    public boolean search(){
+
+	Point target = new Point(posX,posY);
+	target.x += Object.DirectionVector[now_dir.ordinal()][0];
+	target.y += Object.DirectionVector[now_dir.ordinal()][1];
+	
+	Event event = event_manager.get_event(target);
+
+
+	if(event != null){
+	    
+
+	    if(event instanceof TalkEvent){
+		now_talk_event = (TalkEvent)event;
+		now_talk_event.start();
+		now_state =  STATE.STATE_TALK_EVENT;
+	    }
+	    else if(event instanceof SaveEvent){
+		now_save_event = (SaveEvent)event;
+		now_save_event.start();
+		now_state =  STATE.STATE_SAVE_EVENT;
+	    }
+
+	    else if(event instanceof BattleEvent){
+		this.now_battle_event = (BattleEvent)event;
+		this.now_battle_event.start();
+		this.now_state =  STATE.STATE_BATTLE_EVENT;
+	    }
+	    
+	    return true;
+	}
+	else{
+
+	    now_talk_event = (TalkEvent)(event_manager.get_event(new Point(-1,-1)));
+	    now_talk_event.start();
+	    now_state =  STATE.STATE_TALK_EVENT;
+	    return false;
+	}
+
+    }
+
+
+    public void move_stage(String next_stage){
+	this.now_stage = next_stage;
+	this.now_state = STATE.STATE_MOVE_STAGE_EVENT;
+    }
+    
+
+    public void open_window(){
+	status_window.open();
+	select_window.open();	
+    }
+
+
+    public void close_window(){
+	status_window.close();
+	select_window.close();	
+    }
+
+    public void load(){
+	try {
+            BufferedReader br = new BufferedReader(new InputStreamReader(getClass().getClassLoader().getResourceAsStream("data/personal.txt"), "Shift_JIS"));
+	    
+	    ArrayList<String> array = new ArrayList<String>();
+	    ArrayList<Integer> array_i = new ArrayList<Integer>();
+	    String line;
+	    
+	    while((line = br.readLine()) != null) array.add(line);
+
+	    for(int i = 0; i < array.size() - 1; i++) array_i.add(Integer.parseInt(array.get(i)));
+	    
+	    status.SetData(array_i);
+	    this.posX = array_i.get(array.size() - 3);
+	    this.posY = array_i.get(array.size() - 2);
+	    this.now_stage = array.get(array.size() - 1);
+
+	    init_windows();
+	    this.now_state = STATE.STATE_MOVE;
+	    this.walking = 0;
+	    frame_count = -1;
+        }catch(FileNotFoundException e){
+	    System.out.println(e);	
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void init_windows(){
+	String[][] status_s = {{"",String.valueOf(status.LEVEL)},
+			       {"",String.valueOf(status.HP)},
+			       {"",String.valueOf(status.MP)},
+			       {"",String.valueOf(status.GOLD)},
+			       {"",String.valueOf(status.E)} };
+
+	String[][] strength_s = {{"",String.valueOf(status.LEVEL)},
+				 {"",String.valueOf(status.POWER)},
+				 {"",String.valueOf(status.SPEED)},
+				 {"",String.valueOf(status.MAX_HP)},
+				 {"",String.valueOf(status.MAX_MP)},
+				 {"",String.valueOf(status.POWER)},
+				 {"",String.valueOf(status.DEFFENCE)}};
+
+	String[][] select_s = {{"",""},
+			       {"",""},
+			       {"",""}};
+
+	String[][] decide_s = {{""},
+			       {""}};
+	    
+
+	int sx = MainPanel.WIDTH / 10;
+	int sy = MainPanel.HEIGHT / 6;
+	
+	status_window = new StatusWindow(status.NAME,
+					 sx,
+					 sy,
+					 status_s);
+
+	strength_window = new StatusWindow("",
+					   sx + status_window.get_WIDTH() + 5,
+					   sy + 30,
+					   strength_s);
+
+
+	select_window = new SelectWindow("",
+					 sx + status_window.get_WIDTH() + 100,
+					 sy - 30,
+					 select_s);
+
+	mes_window = new MessageWindow("",
+				       (int)(MainPanel.WIDTH / 5.3),
+				       (int)(MainPanel.HEIGHT / 1.8),
+				       MainPanel.WIDTH * 4 / 6,
+				       150);
+
+	
+	decide_window = new SelectWindow("",
+					 (int)(MainPanel.WIDTH / 5.3) + 150 / 5,
+					 (int)(MainPanel.HEIGHT / 1.8) - 30,
+					 decide_s);
+	
+	
+    }
+
+    public void update_windows(){
+	
+	String[][] status_s = {{"",String.valueOf(status.LEVEL)},
+			       {"",String.valueOf(status.HP)},
+			       {"",String.valueOf(status.MP)},
+			       {"",String.valueOf(status.GOLD)},
+			       {"",String.valueOf(status.E)} };
+
+	String[][] strength_s = {{"",String.valueOf(status.LEVEL)},
+				 {"",String.valueOf(status.POWER)},
+				 {"",String.valueOf(status.SPEED)},
+				 {"",String.valueOf(status.MAX_HP)},
+				 {"",String.valueOf(status.MAX_MP)},
+				 {"",String.valueOf(status.POWER)},
+				 {"",String.valueOf(status.DEFFENCE)}};
+	
+
+	int sx = MainPanel.WIDTH / 10;
+	int sy = MainPanel.HEIGHT / 6;
+	
+	this.status_window.set_status_list(status_s);
+	this.strength_window.set_status_list(strength_s);
+    }
+    
+
+    public void damaged(Enemy enemy,int damage){
+	
+	this.status.HP = Math.max(this.status.HP - damage,0);
+
+	
+	//update_windows();
+	
+	if(this.status.HP <= 0){
+	    now_battle_event.end();
+	    this.now_state = STATE.STATE_BATTLE_LOSE;
+	}
+
+	
+    }
+
+    public void LEVEL_UP(){
+	this.status.LEVEL++;
+	this.status.POWER += 5;
+	this.status.SPEED += 3;
+	this.status.MAX_HP += 3;
+	this.status.MAX_MP += 4;
+	this.status.ATTACK += 3;
+	this.status.DEFFENCE += 2;
+	this.status.HP = this.status.MAX_HP;
+	this.status.MP = this.status.MAX_MP;
+	
+    }
+
+    public int get_LEVEL(){
+	return status.LEVEL;
+    }
+
+
+    public void set_LEVEL(int LEVEL){
+	this.status.LEVEL = LEVEL;
+    }
+
+
+    public int get_HP(){
+	return status.HP;
+    }
+
+
+    public void set_HP(int HP){
+	this.status.HP = HP;
+    }
+
+
+    public int get_MP(){
+	return status.MP;
+    }
+
+
+    public void set_MP(int MP){
+	this.status.MP = MP;
+    }
+
+
+    public int get_GOLD(){
+	return status.GOLD;
+    }
+
+
+    public void set_GOLD(int GOLD){
+	this.status.GOLD = GOLD;
+    }
+
+
+    public int get_start_x(){
+	return start_x;
+    }
+
+
+    public int get_start_y(){
+	return start_y;
+    }
+    
+
+    public int get_frame_count(){
+	return frame_count;
+    }
+
+
+    public void set_frame_count(int frame_count){
+	this.frame_count = frame_count;
+    }
+
+
+    public STATE get_now_state(){
+	return now_state;
+    }
+
+
+    public void set_now_state(STATE now_state){
+	this.now_state = now_state;
+    }
+    
+
+    public String get_now_stage(){
+	return now_stage;
+    }
+    
+
+    public void set_posX(int posX){
+	this.posX = posX;
+    }
+
+
+    public void set_posY(int posY){
+	this.posY = posY;
+    }
+
+
+    public void set_start_x(int start_x){
+	this.start_x = start_x;
+    }
+
+
+    public void set_start_y(int start_y){
+	this.start_y = start_y;
+    }
+
+
+    public void set_walking(int walking){
+	this.walking = walking;
+    }
+    
+}
+import java.awt.*;
+
+
+public class Resource{
+    private Image image;
+    
+
+    private int width;
+    private int height;
+
+    private String name;
+    public Resource(String filename){
+	name = filename;
+	LoadFile(filename);
+	
+    }
+
+
+    public void LoadFile(String filename){
+	String path = "image/" + filename;
+	image = Toolkit.getDefaultToolkit().getImage(getClass().getClassLoader().getResource(path));
+	// width = image.getWidth(this);
+	// height = image.getHeight(this);
+    }
+
+
+    public Image get_Image(){
+	return image;
+    }
+
+
+    public int get_Width(){
+	return width;
+    }
+    public int get_Height(){
+	return height;
+    }
+    
+    
+}
+
+
+
+import java.awt.*;
+import java.io.*;
+import java.util.*;
+
+
+public class SaveEvent extends Event{
+
+    private String[] conversations;
+
+    private MessageWindow mes_window;
+
+    private SelectWindow decide_window;
+    public SaveEvent(String[] conversations){
+	super();
+	
+	this.conversations = conversations;
+	this.mes_window = Player.mes_window;
+	this.decide_window = Player.decide_window;
+    }
+
+
+    public void start(){
+	super.start();
+	System.out.println(this.mes_window);
+	mes_window.set_contents(this.conversations);
+	mes_window.open();
+    }
+
+
+    public void end(){
+	super.end();
+	mes_window.close();
+    }
+
+
+    public void update(){
+	if(happen){
+	    mes_window.update();
+	}
+    }
+
+
+    public boolean next(){
+	if(!mes_window.get_printing_message()){
+	    
+	    boolean hasNext = mes_window.next();
+		
+	    if(!hasNext){
+		this.end();
+		return false;
+	    }
+	}	
+	return true;
+    }
+    
+
+    public void draw(Graphics g){
+	if(happen){
+	    mes_window.draw(g);
+	}
+    }
+
+
+    public void save(Player player){
+	try{
+	    File file = new File("data/personal.txt");
+
+	    if (checkBeforeWritefile(file)){
+		PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file)));
+
+		int[] datas = {player.status.LEVEL,player.status.HP,player.status.MP,
+			       player.status.GOLD,player.status.E,player.status.POWER,
+			       player.status.SPEED,player.status.MAX_HP,player.status.MAX_MP,
+			       player.status.ATTACK,player.status.DEFFENCE,
+			       player.get_posX(),player.get_posY()};
+    
+		for(int i = 0; i < datas.length; i++) pw.println(datas[i]);
+		pw.println(player.get_now_stage());
+		pw.close();
+	    }else{
+		System.out.println("");
+	    }
+	}catch(IOException e){
+	    System.out.println(e);
+	}
+    }
+
+    private static boolean checkBeforeWritefile(File file){
+	if (file.exists()){
+	    if (file.isFile() && file.canWrite()){
+		return true;
+	    }
+	}
+
+	return false;
+    }    
+}
+import java.awt.*;
+import java.util.*;
+
+
+public class SelectWindow extends Window{
+
+    public static int row_width = 5 * MessageString.FONT_WIDTH;
+    
+
+    public static int INTERVAL_Y = 10;
+    public static int INTERVAL_X = 10;
+
+
+    public static int AROUND_Y = 5 * Window.EDGE_SIZE;
+    public static int AROUND_X = 7 * Window.EDGE_SIZE;
+
+    private Point select_point;/
+    
+    private String[][] select_list;
+
+
+    private int row_widths[];
+
+    public SelectWindow(String title,int x,int y,String[][] select_list){
+	super(title,x,y,0,0);
+	
+	WIDTH = select_list[0].length  * (row_width + INTERVAL_X) - INTERVAL_X + 2 * AROUND_X;
+	HEIGHT = select_list.length * (MessageString.FONT_HEIGHT + INTERVAL_Y) - INTERVAL_Y + 2 * AROUND_Y;
+	
+	message.set_Color(MessageString.COLOR.WHITE);
+	this.select_list = select_list;
+	select_point = new Point(0,0);
+    }
+
+    
+
+    public void update(){
+	super.update();
+	if(active){
+	}
+    }
+
+
+    public void draw(Graphics g){
+	super.draw(g);
+	
+	if(active){
+
+	    for(int y = 0; y < select_list.length; y++){
+		int my = posY + AROUND_Y + (MessageString.FONT_HEIGHT + INTERVAL_Y) * y;
+		for(int x = 0; x < select_list[y].length; x++){
+		    int mx = posX + AROUND_X + (row_width + INTERVAL_X) * x;
+		    message.drawMessage(g,
+					mx,
+					my,
+					select_list[y][x]);
+		}
+	    }
+
+
+	    int cx = posX + AROUND_X + (row_width + INTERVAL_X) * select_point.x - MessageString.FONT_WIDTH;
+	    int cy = posY + AROUND_Y + (MessageString.FONT_HEIGHT + INTERVAL_Y) * select_point.y + MessageString.FONT_WIDTH / 2;
+	    int[] xPoints = {cx,cx + MessageString.FONT_WIDTH / 2,cx};
+	    int[] yPoints = {cy,cy + MessageString.FONT_HEIGHT / 4,cy + MessageString.FONT_HEIGHT / 2};
+	    g.setColor(Color.WHITE);
+	    g.fillPolygon(xPoints, yPoints, 3);
+	    
+	}
+    }
+
+
+    public void move_cursor(Object.DIRECTION dir){
+	int nx = select_point.x + Object.DirectionVector[dir.ordinal()][0];
+	int ny = select_point.y + Object.DirectionVector[dir.ordinal()][1];
+
+	if(inner(nx,ny)){
+	    select_point.x = nx;
+	    select_point.y = ny;
+	}
+    }
+    
+    public boolean inner(int x,int y){
+	return 0 <= x && x < select_list[0].length && 0 <= y && y < select_list.length;
+    }
+
+
+    public Point get_select_point(){
+	return select_point;
+    }
+
+
+    public void set_select_point(Point select_point){
+	this.select_point = select_point;
+    }
+
+
+    public String get_selected_list(Point p){
+	return select_list[p.y][p.x];
+    }
+}
+
+
+import java.awt.*;
+import java.util.*;
+import java.io.*;
+
+
+public class StaffRoll{
+
+
+    public static int WIDTH = MainPanel.WIDTH;
+    public static int HEIGHT = MainPanel.HEIGHT;
+
+
+    public static int SPEED = 2;
+
+    private int CHAR_SIZE = 15;
+
+
+    public static int SX = (MainPanel.WIDTH - WIDTH) / 2;
+    public static int SY = (MainPanel.HEIGHT - HEIGHT) / 2;
+
+
+    private int posX;
+    private int posY;
+    
+    private ArrayList<String> credit;
+
+    private boolean active;
+    
+    public StaffRoll(){
+	credit = new ArrayList<String>();
+	this.active = false;
+	this.posX = SX;
+	this.posY = SY + HEIGHT;
+	loadFile("credit.txt");
+    }
+
+
+    public void loadFile(String filename){
+	String path = "data/" + filename;
+	try {
+	    File file = new File(path);
+	    BufferedReader in = new BufferedReader(new FileReader(file));
+	    String line;
+	    while((line = in.readLine()) != null) credit.add(line);	    
+	}catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }catch(IOException e){
+	    System.out.println(e);
+	}
+    }
+
+
+    public void start(){
+	this.active = true;
+	System.out.println("start");
+    }
+
+    public void end(){
+	this.active = false;
+	System.out.println("end");
+    }
+    public void update(){
+	if(active){
+	    this.posY -= SPEED;
+	}
+    }
+    
+    public void draw(Graphics g){
+	if(active){
+	    if(this.posY <= -CHAR_SIZE * credit.size()) this.end();
+	    Font f = new Font("TimesRoman",Font.ITALIC,CHAR_SIZE);
+	    g.setFont(f);
+	    for(int i = 0; i < credit.size(); i++)
+		g.drawString(credit.get(i),posX,posY + CHAR_SIZE * i);
+	    
+	}
+    }
+
+    public boolean get_active(){
+	return active;
+    }
+}
+import java.awt.*;
+import java.util.*;
+
+public class State{
+
+    public String NAME;
+    public int LEVEL;
+    public int HP;
+    public int MP;
+    public int GOLD;
+    public int E;
+
+    public int POWER;
+    public int SPEED;
+    public int MAX_HP;
+    public int MAX_MP;
+    public int ATTACK;
+    public int DEFFENCE;
+    
+    public State(){
+	this.NAME = "";
+    }
+
+    public State(String name){
+	this.NAME = name;
+    }
+    public void SetData(ArrayList<Integer> array){
+	this.LEVEL = array.get(0);
+	this.HP = array.get(1);
+	this.MP = array.get(2);
+	this.GOLD = array.get(3);
+	this.E = array.get(4);
+
+	this.POWER = array.get(5);
+	this.SPEED = array.get(6);
+	this.MAX_HP = array.get(7);
+	this.MAX_MP = array.get(8);
+	this.ATTACK = array.get(9);
+	this.DEFFENCE = array.get(10);
+
+    }
+
+    public int[] getData(){
+	int[] datas = {this.LEVEL,this.HP,this.MP,
+		       this.GOLD,this.E,this.POWER,
+		       this.SPEED,this.MAX_HP,this.MAX_MP,
+		       this.ATTACK,this.DEFFENCE};
+	return datas;
+    }
+
+}
+import java.awt.*;
+
+
+public class StatusWindow extends Window{
+
+    public static int row_width = 5 * MessageString.FONT_WIDTH;
+    
+
+    public static int INTERVAL_Y = 10;
+    public static int INTERVAL_X = 5;
+
+
+    public static int AROUND_Y = 5 * Window.EDGE_SIZE;
+    public static int AROUND_X = 3 * Window.EDGE_SIZE;
+
+    private String[][] status_list;
+
+    private State status;
+
+    public StatusWindow(String title,int x,int y,String[][] status_s){
+	super(title,x,y,0,0);
+	this.status_list = status_s;
+	WIDTH = status_list[0].length  * (row_width + INTERVAL_X) + AROUND_X - INTERVAL_X;
+	HEIGHT = status_list.length * (MessageString.FONT_HEIGHT + INTERVAL_Y) + 2 * AROUND_Y - INTERVAL_Y;
+
+	message.set_Color(MessageString.COLOR.WHITE);
+
+    }
+
+    
+
+    public void update(){
+	super.update();
+	if(active){
+	}
+    }
+
+
+    public void draw(Graphics g){
+	super.draw(g);
+	if(active){
+	    int mx = posX + AROUND_X;	
+
+	    for(int y = 0; y < status_list.length; y++){
+		int my = posY + AROUND_Y + (MessageString.FONT_HEIGHT + INTERVAL_Y) * y;
+
+	    
+		message.drawMessage(g,
+				    mx,
+				    my,
+				    status_list[y][0]);
+
+		int sy = my;
+		int sx = posX + this.WIDTH - status_list[y][1].length() * MessageString.FONT_WIDTH - 2 * Window.EDGE_SIZE;
+		message.drawMessage(g,
+				    sx,
+				    sy,
+				    status_list[y][1]);
+	    }
+	}
+    }
+
+    public void set_status_list(String[][] status_list){
+	this.status_list = status_list;
+    }
+}
+import java.awt.*;
+
+
+public class TalkEvent extends Event{
+
+    private String[] conversations;
+
+    private MessageWindow mes_window;
+    
+    public TalkEvent(String[] conversations){
+	super();
+	
+	this.conversations = conversations;
+	mes_window = Player.mes_window;	
+    }
+
+
+    public void start(){
+	super.start();
+	mes_window.set_contents(this.conversations);
+	mes_window.open();
+    }
+
+
+    public void end(){
+	super.end();
+	mes_window.close();
+    }
+
+
+    public void update(){
+	if(happen){
+	    mes_window.update();
+	}
+    }
+
+
+    public boolean next(){
+	if(!mes_window.get_printing_message()){
+	    boolean hasNext = mes_window.next();
+		
+	    if(!hasNext){
+		this.end();
+		return false;
+	    }
+	}	
+	return true;
+    }
+    
+
+    public void draw(Graphics g){
+	if(happen){
+	    mes_window.draw(g);
+	}
+    }
+
+}
+import java.awt.*;
+
+
+public class Window{
+
+    public static final int EDGE_SIZE = 4;
+
+    protected String title;
+
+    protected static MessageString message;
+
+    protected boolean active;
+    
+
+    protected int WIDTH;
+    protected int HEIGHT;
+
+
+    protected int posX;
+    protected int posY;
+
+    
+    public Window(String title,int x,int y,int w,int h){
+	this.title = title;
+	this.posX = x;
+	this.posY = y;
+	this.WIDTH = w;
+	this.HEIGHT = h;
+	if(message == null)
+	    message = new MessageString(MessageString.COLOR.WHITE);
+	active = false;
+    }
+    
+
+    public void update(){
+	if(active){
+	}
+    }
+
+
+    public void draw(Graphics g){
+	if(active){
+
+	    int in_X = posX + EDGE_SIZE;
+	    int in_Y = posY + EDGE_SIZE;
+	
+	    int in_WIDTH = WIDTH - 2 * EDGE_SIZE;
+	    int in_HEIGHT = HEIGHT - 2 * EDGE_SIZE;
+
+
+	    g.setColor(Color.WHITE);
+	    g.fillRect(posX,posY,WIDTH,HEIGHT);
+
+
+	    g.setColor(Color.BLACK);
+	    g.fillRect(in_X,in_Y,in_WIDTH,in_HEIGHT);
+
+
+	    if(title != ""){
+		int title_width = title.length() * MessageString.FONT_WIDTH;
+		int title_height = MessageString.FONT_HEIGHT;
+		int sx = posX + WIDTH / 2 - title_width / 2;
+		int sy = posY;
+		g.setColor(Color.BLACK);
+		g.fillRect(sx,sy,title_width,title_height);
+		message.drawMessage(g,
+				    sx,
+				    sy - 6,
+				    title);
+	    }
+	}
+	
+    }
+
+
+    public int get_WIDTH(){
+	return WIDTH;
+    }
+
+
+    public void set_WIDTH(int WIDTH){
+	this.WIDTH = WIDTH;
+    }
+
+
+    public int get_HEIGHT(){
+	return HEIGHT;
+    }
+
+
+    public void set_HEIGHT(int HEIGHT){
+	this.HEIGHT = HEIGHT;
+    }
+
+
+    public void open(){
+	active = true;
+    }
+
+
+    public void close(){
+	active = false;
+    }
+
+
+    public void toggle(){
+	active = !active;
+    }
+}

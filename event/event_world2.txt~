@@ -1,0 +1,8 @@
+#イベントデータ(ワールド)
+BATTLE,3,3,tartnack.png,5,0
+BATTLE,3,3,robo.png,5,0
+BATTLE,3,3,tiger.png,5,0
+MOVE,39,4,world
+MOVE,18,18,tower
+MOVE,2,0,world
+SAVE,24,23,ぼうけんのしょにセーブした
