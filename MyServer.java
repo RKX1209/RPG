@@ -47,7 +47,7 @@ class ClientProcThread extends Thread {
     }
 }
 
-class MyServer{
+public class MyServer extends Thread{
 	
     private static int maxConnection=100;//最大接続数
     private static Socket[] incoming;//受付用のソケット
@@ -76,7 +76,7 @@ class MyServer{
     }
 	
     //mainプログラム
-    public static void main(String[] args) {
+    public void run(){
 	//必要な配列を確保する
 	incoming = new Socket[maxConnection];
 	flag = new boolean[maxConnection];

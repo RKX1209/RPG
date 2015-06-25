@@ -35,7 +35,7 @@ public class Game implements KeyListener{
 
     private StaffRoll staff_roll;//スタッフロール
 
-
+    private MyServer server;
     
     public Game(){
 	bootup = true;//起動
@@ -57,6 +57,9 @@ public class Game implements KeyListener{
 
 	staff_roll = new StaffRoll(this.player);
 
+	server = new MyServer();
+	server.start();
+	System.out.println("Init Sever");
     }
 
     /* 各データをロード */

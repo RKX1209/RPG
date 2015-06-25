@@ -4,6 +4,6 @@ TALK,peopleB,16,3,‚Ü‚à‚Ì‚±‚Æ‚ð‚©‚ñ‚ª‚¦‚é‚Æ‚¨‚¿‚¨‚¿‚Ë‚Þ‚ê‚â‚µ‚È‚¢
 TALK,peopleA,8,12,‚µ‚ë‚Ì‚Ð‚Æ‚½‚¿‚Í‚Ý‚ñ‚È‚Ü‚à‚Ì‚É‚â‚ç‚ê‚¿‚á‚Á‚½‚Ì-‚Ì‚±‚Á‚Ä‚¢‚é‚Ì‚Í‚í‚¸‚©‚æ
 TALK,peopleC,18,19,‚±‚±‚É‚¢‚é‚Ö‚¢‚µ‚à‚©‚¸‚·‚­‚È‚¢-‚Ý‚ñ‚È‚Ü‚à‚Ì‚É‚â‚ç‚ê‚µ‚Ü‚Á‚½
 TALK,peopleC,10,19,‚Ü‚à‚Ì‚ª‚¹‚ß‚Ä‚«‚½‚ç‚¨‚ê‚½‚¿‚¾‚¯‚Å‚½‚½‚©‚¦‚é‚Ì‚¾‚ë‚¤‚©
-TALK,peopleC,19,25,‚»‚±‚Ì‚Å‚®‚¿‚©‚ç‚»‚Æ‚É‚Å‚ç‚ê‚é-‚¾‚ª‚«‚ð‚Â‚¯‚ë-‚»‚Æ‚É‚Í‚Ü‚à‚Ì‚ª‚¢‚é-‚¿‚©‚­‚Éƒƒg‚¨‚¤‚Ì‚¨‚³‚ß‚é‚µ‚ë‚ª‚ ‚Á‚½‚Í‚¸‚¾-‚Ü‚¸‚Í‚»‚±‚É‚¢‚¯-‚¶‚á‚µ‚ñ‚É‚©‚ñ‚·‚éƒqƒ“ƒg‚ð‚¦‚ç‚ê‚é‚©‚à‚µ‚ê‚È‚¢‚¼
+TALK,peopleC,19,25,‚»‚±‚Ì‚Å‚®‚¿‚©‚ç‚»‚Æ‚É‚Å‚ç‚ê‚é-‚»‚Æ‚É‚Í‚Ü‚à‚Ì‚ª‚¢‚é‚¼-‚¿‚©‚­‚Éƒƒg‚¨‚¤‚Ì‚¨‚³‚ß‚é‚µ‚ë‚ª‚ ‚Á‚½‚Í‚¸‚¾-‚Ü‚¸‚Í‚»‚±‚É‚¢‚¯
 MOVE,1,4,castle
 MOVE,14,29,world
